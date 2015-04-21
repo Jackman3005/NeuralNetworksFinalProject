@@ -79,10 +79,33 @@ srand(12345678)
 
 data_layer  = AsyncHDF5DataLayer(name="train-data", source=train_path, batch_size=100)
 
-ip1_layer   = InnerProductLayer(name="ip1", output_dim=121, weight_init=XavierInitializer(), weight_regu=L2Regu(250), bottoms=[:data], tops=[:ip1])
+conv1_layer = ConvolutionLayer(name="conv1", n_filter=32, kernel=(5,5), pad=(2,2),
+    stride=(1,1), filter_init=GaussianInitializer(std=0.0001),
+    bottoms=[:data], tops=[:conv1])
+pool1_layer = PoolingLayer(name="pool1", kernel=(3,3), stride=(2,2), neuron=Neurons.ReLU(),
+    bottoms=[:conv1], tops=[:pool1])
+norm1_layer = LRNLayer(name="norm1", kernel=3, scale=5e-5, power=0.75, mode=LRNMode.WithinChannel(),
+    bottoms=[:pool1], tops=[:norm1])
+conv2_layer = ConvolutionLayer(name="conv2", n_filter=32, kernel=(5,5), pad=(2,2),
+    stride=(1,1), filter_init=GaussianInitializer(std=0.01),
+    bottoms=[:norm1], tops=[:conv2], neuron=Neurons.ReLU())
+pool2_layer = PoolingLayer(name="pool2", kernel=(3,3), stride=(2,2), pooling=Pooling.Mean(),
+    bottoms=[:conv2], tops=[:pool2])
+norm2_layer = LRNLayer(name="norm2", kernel=3, scale=5e-5, power=0.75, mode=LRNMode.WithinChannel(),
+    bottoms=[:pool2], tops=[:norm2])
+conv3_layer = ConvolutionLayer(name="conv3", n_filter=64, kernel=(5,5), pad=(2,2),
+    stride=(1,1), filter_init=GaussianInitializer(std=0.01),
+    bottoms=[:norm2], tops=[:conv3], neuron=Neurons.ReLU())
+pool3_layer = PoolingLayer(name="pool3", kernel=(3,3), stride=(2,2), pooling=Pooling.Mean(),
+    bottoms=[:conv3], tops=[:pool3])
+ip1_layer   = InnerProductLayer(name="ip1", output_dim=121, weight_init=XavierInitializer(),
+    weight_regu=L2Regu(250), bottoms=[:pool3], tops=[:ip1])
 
 loss_layer  = SoftmaxLossLayer(name="softmax", bottoms=[:ip1, :label])
 acc_layer   = AccuracyLayer(name="accuracy", bottoms=[:ip1, :label])
+
+common_layers = [conv1_layer, pool1_layer, norm1_layer, conv2_layer, pool2_layer, norm2_layer,
+                 conv3_layer, pool3_layer, ip1_layer]
 
 # setup dropout for the different layers
 # we use 20% dropout on the inputs and 50% dropout in the hidden layers
@@ -98,7 +121,6 @@ else
 end
 init(backend)
 
-common_layers = [ip1_layer]
 #drop_layers = [drop_input, drop_fc1, drop_fc2]
 drop_layers = []
 # put training net together, note that the correct ordering will automatically be established by the constructor
