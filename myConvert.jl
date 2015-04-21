@@ -1,6 +1,6 @@
 # convert binary into HDF5 data
 
-using HDF5, JDL
+using HDF5, JLD
 using Images
 
 #Specify the directory you want to search
