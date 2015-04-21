@@ -28,8 +28,13 @@ function parse_commandline()
             help = "A flag for whether c++ Native extension should be used, only if not using GPU"
             action = :store_true
 
-        "--dataFile", "-F"
-            help = "path to the data file you want to use"
+        "--trainFile", "-F"
+            help = "path to the training data file you want to use"
+            arg_type = String
+            default = ""
+
+        "--testFile", "-t"
+            help = "path to the test data file you want to use"
             arg_type = String
             default = ""
 
@@ -59,7 +64,8 @@ else
   blas_set_num_threads(parsed_args["numBLASThreads"])
 end
 
-data_path = parsed_args["dataFile"]
+train_path = parsed_args["trainFile"]
+test_path = parsed_args["testFile"]
 base_path = parsed_args["basePath"]
 
 using Mocha
@@ -71,28 +77,19 @@ using Mocha
 # fix the random seed to make results reproducable
 srand(12345678)
 
-data_layer  = HDF5DataLayer(name="train-data", source=data_path, batch_size=100)
-# each fully connected layer uses a ReLU activation and a constraint on the L2 norm of the weights
-fc1_layer   = InnerProductLayer(name="fc1", output_dim=1200, neuron=Neurons.ReLU(),
-                                weight_init = XavierInitializer,
-                                #weight_cons = L2Cons(4.5),
-                                bottoms=[:data], tops=[:fc1])
-fc2_layer   = InnerProductLayer(name="fc2", output_dim=1200, neuron=Neurons.ReLU(),
-                                weight_init = XavierInitializer,
-                                weight_cons = L2Cons(4.5),
-                                bottoms=[:fc1], tops=[:fc2])
-fc3_layer   = InnerProductLayer(name="out", output_dim=10, bottoms=[:fc2],
-                                weight_init = XavierInitializer,
-                                weight_cons = L2Cons(4.5),
-                                tops=[:out])
-loss_layer  = SoftmaxLossLayer(name="loss", bottoms=[:out,:label])
+data_layer  = AsyncHDF5DataLayer(name="train-data", source=train_path, batch_size=100)
+
+ip1_layer   = InnerProductLayer(name="ip1", output_dim=10, weight_init=GaussianInitializer(std=0.01), weight_regu=L2Regu(250), bottoms=[:data], tops=[:ip1])
+
+loss_layer  = SoftmaxLossLayer(name="softmax", bottoms=[:ip1, :label])
+acc_layer   = AccuracyLayer(name="accuracy", bottoms=[:ip1, :label])
 
 # setup dropout for the different layers
 # we use 20% dropout on the inputs and 50% dropout in the hidden layers
 # as these values were previously found to be good defaults
-drop_input  = DropoutLayer(name="drop_in", bottoms=[:data], ratio=0.2)
-drop_fc1 = DropoutLayer(name="drop_fc1", bottoms=[:fc1], ratio=0.5)
-drop_fc2  = DropoutLayer(name="drop_fc2", bottoms=[:fc2], ratio=0.5)
+#drop_input  = DropoutLayer(name="drop_in", bottoms=[:data], ratio=0.2)
+#drop_fc1 = DropoutLayer(name="drop_fc1", bottoms=[:fc1], ratio=0.5)
+#drop_fc2  = DropoutLayer(name="drop_fc2", bottoms=[:fc2], ratio=0.5)
 
 if parsed_args["useCUDA"]
   backend = GPUBackend()
@@ -101,12 +98,12 @@ else
 end
 init(backend)
 
-common_layers = [fc1_layer, fc2_layer, fc3_layer]
-drop_layers = [drop_input, drop_fc1, drop_fc2]
+common_layers = [ip1_layer]
+#drop_layers = [drop_input, drop_fc1, drop_fc2]
+drop_layers = []
 # put training net together, note that the correct ordering will automatically be established by the constructor
 net = Net("NDSB_train", backend, [data_layer, common_layers..., drop_layers..., loss_layer])
 
-base_path = "snapshots_dropout_fc"
 # we let the learning rate decrease by 0.998 in each epoch (=600 batches of size 100)
 # and let the momentum increase linearly from 0.5 to 0.9 over 500 epochs
 # which is equivalent to an increase step of 0.0008
@@ -126,9 +123,9 @@ add_coffee_break(solver, TrainingSummary(), every_n_iter=100)
 add_coffee_break(solver, Snapshot(base_path), every_n_iter=5000)
 
 # show performance on test data every 600 iterations (one epoch)
-data_layer_test = HDF5DataLayer(name="test-data", source="data/test.txt", batch_size=100)
+data_layer_test = AsyncHDF5DataLayer(name="test-data", source=test_path, batch_size=100)
 acc_layer = AccuracyLayer(name="test-accuracy", bottoms=[:out, :label], report_error=true)
-test_net = Net("MNIST-test", backend, [data_layer_test, common_layers..., acc_layer])
+test_net = Net("NDSB-test", backend, [data_layer_test, common_layers..., acc_layer])
 add_coffee_break(solver, ValidationPerformance(test_net), every_n_iter=600)
 
 solve(solver, net)
