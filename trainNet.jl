@@ -64,9 +64,9 @@ else
   blas_set_num_threads(parsed_args["numBLASThreads"])
 end
 
-train_path = parsed_args["trainFile"]
-test_path = parsed_args["testFile"]
 base_path = parsed_args["basePath"]
+train_path = base_path * "/" * parsed_args["trainFile"]
+test_path = base_path * "/" * parsed_args["testFile"]
 
 using Mocha
 
@@ -79,7 +79,7 @@ srand(12345678)
 
 data_layer  = AsyncHDF5DataLayer(name="train-data", source=train_path, batch_size=100)
 
-ip1_layer   = InnerProductLayer(name="ip1", output_dim=10, weight_init=GaussianInitializer(std=0.01), weight_regu=L2Regu(250), bottoms=[:data], tops=[:ip1])
+ip1_layer   = InnerProductLayer(name="ip1", output_dim=121, weight_init=XavierInitializer(), weight_regu=L2Regu(250), bottoms=[:data], tops=[:ip1])
 
 loss_layer  = SoftmaxLossLayer(name="softmax", bottoms=[:ip1, :label])
 acc_layer   = AccuracyLayer(name="accuracy", bottoms=[:ip1, :label])
@@ -111,7 +111,7 @@ net = Net("NDSB_train", backend, [data_layer, common_layers..., drop_layers..., 
 params = SolverParameters(max_iter=600*2000, regu_coef=0.0,
                           mom_policy=MomPolicy.Linear(0.5, 0.0008, 600, 0.9),
                           lr_policy=LRPolicy.Step(0.1, 0.998, 600),
-                          load_from=base_path)
+                          load_from="$base_path/snapshots")
 solver = SGD(params)
 
 setup_coffee_lounge(solver, save_into="$base_path/statistics.jld", every_n_iter=5000)
@@ -120,13 +120,13 @@ setup_coffee_lounge(solver, save_into="$base_path/statistics.jld", every_n_iter=
 add_coffee_break(solver, TrainingSummary(), every_n_iter=100)
 
 # save snapshots every 5000 iterations
-add_coffee_break(solver, Snapshot(base_path), every_n_iter=5000)
+add_coffee_break(solver, Snapshot("$base_path/snapshots"), every_n_iter=5000)
 
 # show performance on test data every 600 iterations (one epoch)
-data_layer_test = AsyncHDF5DataLayer(name="test-data", source=test_path, batch_size=100)
-acc_layer = AccuracyLayer(name="test-accuracy", bottoms=[:out, :label], report_error=true)
-test_net = Net("NDSB-test", backend, [data_layer_test, common_layers..., acc_layer])
-add_coffee_break(solver, ValidationPerformance(test_net), every_n_iter=600)
+#data_layer_test = AsyncHDF5DataLayer(name="test-data", source=test_path, batch_size=100)
+#acc_layer = AccuracyLayer(name="test-accuracy", bottoms=[:out, :label], report_error=true)
+#test_net = Net("NDSB-test", backend, [data_layer_test, common_layers..., acc_layer])
+#add_coffee_break(solver, ValidationPerformance(test_net), every_n_iter=600)
 
 solve(solver, net)
 
@@ -137,5 +137,5 @@ solve(solver, net)
 #end
 
 destroy(net)
-destroy(test_net)
+#destroy(test_net)
 shutdown(backend)
