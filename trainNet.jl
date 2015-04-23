@@ -79,29 +79,35 @@ srand(12345678)
 
 data_layer  = AsyncHDF5DataLayer(name="train-data", source=train_path, batch_size=100)
 
-fc1_layer   = InnerProductLayer(name="fc1", output_dim=2500, neuron=Neurons.ReLU(),
+#Layer for reduction of image size
+IR = (50,50,1)
+fc1_layer   = InnerProductLayer(name="fc1", output_dim=prod(IR[1:2]), neuron=Neurons.ReLU(),
     weight_init = XavierInitializer(),bottoms=[:data], tops=[:fc1])
 
 #Convolution layer needs 4D tensor so we need to reshape outputs from InnerProductLayer (the fourth dimension is implicit)
-reshape_layer = ReshapeLayer(shape=(50,50,1),bottoms=[:fc1], tops=[:rs1])
+reshape_layer = ReshapeLayer(shape=IR,bottoms=[:fc1], tops=[:rs1])
+
 conv1_layer = ConvolutionLayer(name="conv1", n_filter=32, kernel=(5,5), pad=(2,2),
     stride=(1,1), filter_init=XavierInitializer(), bottoms=[:rs1], tops=[:conv1])
 pool1_layer = PoolingLayer(name="pool1", kernel=(3,3), stride=(2,2), neuron=Neurons.ReLU(),
     bottoms=[:conv1], tops=[:pool1])
 norm1_layer = LRNLayer(name="norm1", kernel=3, scale=5e-5, power=0.75, mode=LRNMode.WithinChannel(),
     bottoms=[:pool1], tops=[:norm1])
+
 conv2_layer = ConvolutionLayer(name="conv2", n_filter=32, kernel=(5,5), pad=(2,2),
     stride=(1,1), filter_init=XavierInitializer(), bottoms=[:norm1], tops=[:conv2], neuron=Neurons.ReLU())
 pool2_layer = PoolingLayer(name="pool2", kernel=(3,3), stride=(2,2), pooling=Pooling.Mean(),
     bottoms=[:conv2], tops=[:pool2])
 norm2_layer = LRNLayer(name="norm2", kernel=3, scale=5e-5, power=0.75, mode=LRNMode.WithinChannel(),
     bottoms=[:pool2], tops=[:norm2])
+
 conv3_layer = ConvolutionLayer(name="conv3", n_filter=64, kernel=(5,5), pad=(2,2),
     stride=(1,1), filter_init=XavierInitializer(), bottoms=[:norm2], tops=[:conv3], neuron=Neurons.ReLU())
 pool3_layer = PoolingLayer(name="pool3", kernel=(3,3), stride=(2,2), pooling=Pooling.Mean(),
     bottoms=[:conv3], tops=[:pool3])
+
 ip1_layer   = InnerProductLayer(name="ip1", output_dim=120, weight_init=XavierInitializer(),
-    weight_regu=L2Regu(250), bottoms=[:pool3], tops=[:ip1])
+    bottoms=[:pool3], tops=[:ip1])
 
 loss_layer  = SoftmaxLossLayer(name="softmax", bottoms=[:ip1, :label])
 acc_layer   = AccuracyLayer(name="accuracy", bottoms=[:ip1, :label])
@@ -113,9 +119,12 @@ common_layers = [fc1_layer,reshape_layer, conv1_layer, pool1_layer, norm1_layer,
 # setup dropout for the different layers
 # we use 20% dropout on the inputs and 50% dropout in the hidden layers
 # as these values were previously found to be good defaults
-#drop_input  = DropoutLayer(name="drop_in", bottoms=[:data], ratio=0.2)
-#drop_fc1 = DropoutLayer(name="drop_fc1", bottoms=[:fc1], ratio=0.5)
-#drop_fc2  = DropoutLayer(name="drop_fc2", bottoms=[:fc2], ratio=0.5)
+#drop_input  = DropoutLayer(name="drop_in", bottoms=[:data], ratio=0.1)
+drop_norm1  = DropoutLayer(name="drop_norm1", bottoms=[:norm1], ratio=0.5)
+drop_norm2  = DropoutLayer(name="drop_norm2", bottoms=[:norm2], ratio=0.5)
+drop_ip1 = DropoutLayer(name="drop_ip1", bottoms=[:ip1], ratio=0.5)
+
+
 
 if parsed_args["useCUDA"]
   backend = GPUBackend()
@@ -124,18 +133,18 @@ else
 end
 init(backend)
 
-#drop_layers = [drop_input, drop_fc1, drop_fc2]
-drop_layers = []
+drop_layers = [drop_norm1, drop_norm2, drop_ip1]
+#drop_layers = [drop_input]
 # put training net together, note that the correct ordering will automatically be established by the constructor
 net = Net("NDSB_train", backend, [data_layer, common_layers..., drop_layers..., loss_layer])
 
-# we let the learning rate decrease by 0.998 in each epoch (=750 batches of size 200 (that is 1 epoc of 150000))
-# and let the momentum increase linearly from 0.5 to 0.9 over 500 epochs
-# which is equivalent to an increase step of 0.0008
-# training is done for 2000 epochs
-params = SolverParameters(max_iter=750*1000, regu_coef=0.0,
-                          mom_policy=MomPolicy.Linear(0.5, 0.0008, 600, 0.9),
-                          lr_policy=LRPolicy.Step(0.01,0.998,750),
+
+num_batches = 750
+num_epocs = 1000
+
+params = SolverParameters(max_iter=num_batches*num_epocs, regu_coef=0.0,
+                          mom_policy=MomPolicy.Linear(0.5, 0.0008, num_batches, 0.9),
+                          lr_policy=LRPolicy.Step(0.01,0.998,num_batches),
                           load_from="$base_path/snapshots")
 solver = Nesterov(params)
 
