@@ -77,7 +77,7 @@ using Mocha
 # fix the random seed to make results reproducable
 srand(12345678)
 
-data_layer  = AsyncHDF5DataLayer(name="train-data", source=train_path, batch_size=200)
+data_layer  = AsyncHDF5DataLayer(name="train-data", source=train_path, batch_size=100)
 
 fc1_layer   = InnerProductLayer(name="fc1", output_dim=2500, neuron=Neurons.ReLU(),
     weight_init = XavierInitializer(),bottoms=[:data], tops=[:fc1])
@@ -135,9 +135,9 @@ net = Net("NDSB_train", backend, [data_layer, common_layers..., drop_layers..., 
 # training is done for 2000 epochs
 params = SolverParameters(max_iter=750*1000, regu_coef=0.0,
                           mom_policy=MomPolicy.Linear(0.5, 0.0008, 600, 0.9),
-                          lr_policy=LRPolicy.Step(0.1, 0.998, 600),
+                          lr_policy=LRPolicy.Step(0.01,0.998,750),
                           load_from="$base_path/snapshots")
-solver = SGD(params)
+solver = Nesterov(params)
 
 setup_coffee_lounge(solver, save_into="$base_path/statistics.jld", every_n_iter=5000)
 
