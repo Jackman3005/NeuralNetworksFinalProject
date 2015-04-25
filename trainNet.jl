@@ -75,7 +75,7 @@ using Mocha
 #####################################################
 
 # fix the random seed to make results reproducable
-srand(12345678)
+#srand(12345678)
 
 data_layer  = AsyncHDF5DataLayer(name="train-data", source=train_path, batch_size=100, shuffle=true)
 
@@ -106,11 +106,11 @@ conv3_layer = ConvolutionLayer(name="conv3", n_filter=64, kernel=(5,5), pad=(2,2
 pool3_layer = PoolingLayer(name="pool3", kernel=(3,3), stride=(2,2), pooling=Pooling.Mean(),
     bottoms=[:conv3], tops=[:pool3])
 
-ip1_layer   = InnerProductLayer(name="ip1", output_dim=120, weight_init=XavierInitializer(),
+ip1_layer   = InnerProductLayer(name="ip1", output_dim=121, weight_init=XavierInitializer(),
     bottoms=[:pool1], tops=[:ip1])
 
 loss_layer  = SoftmaxLossLayer(name="softmax", bottoms=[:ip1, :label])
-acc_layer   = AccuracyLayer(name="accuracy", bottoms=[:ip1, :label])
+acc_layer   = AccuracyLayer(name="accuracy", bottoms=[:ip1, :label],report_error=true)
 
 
 #common_layers = [fc1_layer,reshape_layer, conv1_layer, pool1_layer, norm1_layer, conv2_layer, pool2_layer, norm2_layer, conv3_layer, pool3_layer, ip1_layer]
@@ -120,10 +120,10 @@ common_layers = [fc1_layer, reshape_layer, conv1_layer, pool1_layer, ip1_layer]
 # setup dropout for the different layers
 # we use 20% dropout on the inputs and 50% dropout in the hidden layers
 # as these values were previously found to be good defaults
-#drop_input  = DropoutLayer(name="drop_in", bottoms=[:data], ratio=0.1)
-#drop_norm1  = DropoutLayer(name="drop_norm1", bottoms=[:norm1], ratio=0.5)
-#drop_norm2  = DropoutLayer(name="drop_norm2", bottoms=[:norm2], ratio=0.5)
-#drop_ip1 = DropoutLayer(name="drop_ip1", bottoms=[:ip1], ratio=0.5)
+drop_input  = DropoutLayer(name="drop_in", bottoms=[:data], ratio=0.1)
+drop_norm1  = DropoutLayer(name="drop_norm1", bottoms=[:norm1], ratio=0.5)
+drop_norm2  = DropoutLayer(name="drop_norm2", bottoms=[:norm2], ratio=0.5)
+drop_ip1 = DropoutLayer(name="drop_ip1", bottoms=[:ip1], ratio=0.5)
 
 
 
@@ -140,37 +140,30 @@ drop_layers = []
 net = Net("NDSB_train", backend, [data_layer, common_layers..., drop_layers..., loss_layer])
 
 
-num_batches = 750 
+num_iters = 750 
 num_epocs = 1000
 
-params = SolverParameters(max_iter=num_batches*num_epocs, regu_coef=0.0,
-                          mom_policy=MomPolicy.Linear(0.5, 0.0008, num_batches, 0.9),
-                          lr_policy=LRPolicy.Step(0.01,0.98,num_batches),
+params = SolverParameters(max_iter=num_iters*num_epocs, regu_coef=0.0,
+                          mom_policy=MomPolicy.Linear(0.5, 0.0008, num_iters, 0.9),
+                          lr_policy=LRPolicy.Step(0.001,0.98,num_iters),
                           load_from="$base_path/snapshots")
 solver = Nesterov(params)
 
 setup_coffee_lounge(solver, save_into="$base_path/statistics.jld", every_n_iter=5000)
 
 # report training progress every 100 iterations
-add_coffee_break(solver, TrainingSummary(), every_n_iter=100)
+add_coffee_break(solver, TrainingSummary("custom",showLR=true,showMom=true), every_n_iter=100)
+
+#Make net to test accuracy
+test_net = Net("MNIST-test", backend, [data_layer, common_layers..., acc_layer])
+#display accuracy
+add_coffee_break(solver, ValidationPerformance(test_net), every_n_iter=5000)
 
 # save snapshots every 5000 iterations
 add_coffee_break(solver, Snapshot("$base_path/snapshots"), every_n_iter=5000)
 
-# show performance on test data every 600 iterations (one epoch)
-#data_layer_test = AsyncHDF5DataLayer(name="test-data", source=test_path, batch_size=100)
-#acc_layer = AccuracyLayer(name="test-accuracy", bottoms=[:out, :label], report_error=true)
-#test_net = Net("NDSB-test", backend, [data_layer_test, common_layers..., acc_layer])
-#add_coffee_break(solver, ValidationPerformance(net), every_n_iter=5000)
-
 solve(solver, net)
 
-#Profile.init(int(1e8), 0.001)
-#@profile solve(solver, net)
-#open("profile.txt", "w") do out
-#  Profile.print(out)
-#end
-
 destroy(net)
-#destroy(test_net)
+destroy(test_net)
 shutdown(backend)
