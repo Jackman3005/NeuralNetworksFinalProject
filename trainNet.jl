@@ -65,8 +65,8 @@ else
 end
 
 base_path = parsed_args["basePath"]
-train_path = base_path * "/" * parsed_args["trainFile"]
-test_path = base_path * "/" * parsed_args["testFile"]
+train_path = parsed_args["trainFile"]
+test_path = parsed_args["testFile"]
 
 using Mocha
 
@@ -77,7 +77,7 @@ using Mocha
 # fix the random seed to make results reproducable
 srand(12345678)
 
-data_layer  = AsyncHDF5DataLayer(name="train-data", source=train_path, batch_size=100)
+data_layer  = AsyncHDF5DataLayer(name="train-data", source=train_path, batch_size=100, shuffle=true)
 
 #Layer for reduction of image size
 IR = (50,50,1)
@@ -107,22 +107,23 @@ pool3_layer = PoolingLayer(name="pool3", kernel=(3,3), stride=(2,2), pooling=Poo
     bottoms=[:conv3], tops=[:pool3])
 
 ip1_layer   = InnerProductLayer(name="ip1", output_dim=120, weight_init=XavierInitializer(),
-    bottoms=[:pool3], tops=[:ip1])
+    bottoms=[:pool1], tops=[:ip1])
 
 loss_layer  = SoftmaxLossLayer(name="softmax", bottoms=[:ip1, :label])
 acc_layer   = AccuracyLayer(name="accuracy", bottoms=[:ip1, :label])
 
 
-common_layers = [fc1_layer,reshape_layer, conv1_layer, pool1_layer, norm1_layer, conv2_layer, pool2_layer, norm2_layer, conv3_layer, pool3_layer, ip1_layer]
+#common_layers = [fc1_layer,reshape_layer, conv1_layer, pool1_layer, norm1_layer, conv2_layer, pool2_layer, norm2_layer, conv3_layer, pool3_layer, ip1_layer]
+common_layers = [fc1_layer, reshape_layer, conv1_layer, pool1_layer, ip1_layer]
 #common_layers = [conv1_layer, pool1_layer, ip1_layer]
 
 # setup dropout for the different layers
 # we use 20% dropout on the inputs and 50% dropout in the hidden layers
 # as these values were previously found to be good defaults
 #drop_input  = DropoutLayer(name="drop_in", bottoms=[:data], ratio=0.1)
-drop_norm1  = DropoutLayer(name="drop_norm1", bottoms=[:norm1], ratio=0.5)
-drop_norm2  = DropoutLayer(name="drop_norm2", bottoms=[:norm2], ratio=0.5)
-drop_ip1 = DropoutLayer(name="drop_ip1", bottoms=[:ip1], ratio=0.5)
+#drop_norm1  = DropoutLayer(name="drop_norm1", bottoms=[:norm1], ratio=0.5)
+#drop_norm2  = DropoutLayer(name="drop_norm2", bottoms=[:norm2], ratio=0.5)
+#drop_ip1 = DropoutLayer(name="drop_ip1", bottoms=[:ip1], ratio=0.5)
 
 
 
@@ -133,18 +134,18 @@ else
 end
 init(backend)
 
-drop_layers = [drop_norm1, drop_norm2, drop_ip1]
-#drop_layers = [drop_input]
+#drop_layers = [drop_norm1, drop_norm2, drop_ip1]
+drop_layers = []
 # put training net together, note that the correct ordering will automatically be established by the constructor
 net = Net("NDSB_train", backend, [data_layer, common_layers..., drop_layers..., loss_layer])
 
 
-num_batches = 750
+num_batches = 750 
 num_epocs = 1000
 
 params = SolverParameters(max_iter=num_batches*num_epocs, regu_coef=0.0,
                           mom_policy=MomPolicy.Linear(0.5, 0.0008, num_batches, 0.9),
-                          lr_policy=LRPolicy.Step(0.01,0.998,num_batches),
+                          lr_policy=LRPolicy.Step(0.01,0.98,num_batches),
                           load_from="$base_path/snapshots")
 solver = Nesterov(params)
 
@@ -160,7 +161,7 @@ add_coffee_break(solver, Snapshot("$base_path/snapshots"), every_n_iter=5000)
 #data_layer_test = AsyncHDF5DataLayer(name="test-data", source=test_path, batch_size=100)
 #acc_layer = AccuracyLayer(name="test-accuracy", bottoms=[:out, :label], report_error=true)
 #test_net = Net("NDSB-test", backend, [data_layer_test, common_layers..., acc_layer])
-add_coffee_break(solver, ValidationPerformance(net), every_n_iter=5000)
+#add_coffee_break(solver, ValidationPerformance(net), every_n_iter=5000)
 
 solve(solver, net)
 
