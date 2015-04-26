@@ -126,7 +126,6 @@ drop_norm2  = DropoutLayer(name="drop_norm2", bottoms=[:norm2], ratio=0.5)
 drop_ip1 = DropoutLayer(name="drop_ip1", bottoms=[:ip1], ratio=0.5)
 
 
-
 if parsed_args["useCUDA"]
   backend = GPUBackend()
 else
@@ -152,7 +151,7 @@ solver = Nesterov(params)
 setup_coffee_lounge(solver, save_into="$base_path/statistics.jld", every_n_iter=5000)
 
 # report training progress every 100 iterations
-add_coffee_break(solver, TrainingSummary("custom",showLR=true,showMom=true), every_n_iter=100)
+add_coffee_break(solver, TrainingSummary(show_lr=true,show_mom=true), every_n_iter=100)
 
 #Make net to test accuracy
 test_net = Net("MNIST-test", backend, [data_layer, common_layers..., acc_layer])
