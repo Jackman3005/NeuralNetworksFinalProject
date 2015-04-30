@@ -77,7 +77,7 @@ using Mocha
 # fix the random seed to make results reproducable
 #srand(12345678)
 
-data_layer  = AsyncHDF5DataLayer(name="train-data", source=train_path, batch_size=50, shuffle=true)
+data_layer  = AsyncHDF5DataLayer(name="train-data", source=train_path, batch_size=100, shuffle=true)
 
 #Layer for reduction of image size
 IR = (50,50,1)
@@ -87,47 +87,35 @@ fc1_layer   = InnerProductLayer(name="fc1", output_dim=prod(IR[1:2]), neuron=Neu
 #Convolution layer needs 4D tensor so we need to reshape outputs from InnerProductLayer (the fourth dimension is implicit)
 reshape_layer = ReshapeLayer(shape=IR,bottoms=[:fc1], tops=[:rs1])
 
-#Split the reshaped layer to 3 so we can feed into each of the 3 convolution layers
-split1_layer = SplitLayer(bottoms=[:rs1],tops=[:i1,:i2,:i3])
-
-conv1_layer = ConvolutionLayer(name="conv1", n_filter=32, kernel=(5,5), pad=(2,2),
-    stride=(1,1), filter_init=XavierInitializer(), bottoms=[:i1], tops=[:conv1])
+conv1_layer = ConvolutionLayer(name="conv1", n_filter=64, kernel=(5,5), pad=(2,2),
+    stride=(2,2), filter_init=XavierInitializer(), bottoms=[:rs1], tops=[:conv1])
 pool1_layer = PoolingLayer(name="pool1", kernel=(3,3), stride=(2,2), neuron=Neurons.ReLU(),
     bottoms=[:conv1], tops=[:pool1])
+norm1_layer = LRNLayer(name="norm1", kernel=3, scale=5e-5, power=0.75, mode=LRNMode.AcrossChannel(),
+    bottoms=[:pool1], tops=[:norm1])
 
-conv2_layer = ConvolutionLayer(name="conv2", n_filter=32, kernel=(5,5), pad=(2,2),
-    stride=(1,1), filter_init=XavierInitializer(), bottoms=[:i2], tops=[:conv2], neuron=Neurons.ReLU())
+conv2_layer = ConvolutionLayer(name="conv2", n_filter=64, kernel=(5,5), pad=(2,2),
+    stride=(2,2), filter_init=XavierInitializer(), bottoms=[:norm1], tops=[:conv2], neuron=Neurons.ReLU())
 pool2_layer = PoolingLayer(name="pool2", kernel=(3,3), stride=(2,2), pooling=Pooling.Mean(),
     bottoms=[:conv2], tops=[:pool2])
-
-conv3_layer = ConvolutionLayer(name="conv3", n_filter=64, kernel=(5,5), pad=(2,2),
-    stride=(1,1), filter_init=XavierInitializer(), bottoms=[:i3], tops=[:conv3], neuron=Neurons.ReLU())
-pool3_layer = PoolingLayer(name="pool3", kernel=(3,3), stride=(2,2), pooling=Pooling.Mean(),
-    bottoms=[:conv3], tops=[:pool3])
-
-#Concatenate the layers so they can be put back in to one
-concat1_layer = ConcatLayer(bottoms=[:pool1,:pool2,:pool3],tops=[:cat1])
-
-norm3_layer = LRNLayer(name="norm3", kernel=3, scale=5e-5, power=0.75, mode=LRNMode.AcrossChannel(),
-    bottoms=[:cat1], tops=[:norm3])
+norm2_layer = LRNLayer(name="norm2", kernel=3, scale=5e-5, power=0.75, mode=LRNMode.AcrossChannel(),
+    bottoms=[:pool2], tops=[:norm2])
 
 ip1_layer   = InnerProductLayer(name="ip1", output_dim=121, weight_init=XavierInitializer(),
-    bottoms=[:norm3], tops=[:ip1])
+    bottoms=[:norm2], tops=[:ip1])
 
 loss_layer  = SoftmaxLossLayer(name="softmax", bottoms=[:ip1, :label])
 acc_layer   = AccuracyLayer(name="accuracy", bottoms=[:ip1, :label],report_error=true)
 
-
-common_layers = [fc1_layer,reshape_layer, split1_layer, conv1_layer, pool1_layer, conv2_layer, pool2_layer, conv3_layer, pool3_layer, norm3_layer, concat1_layer, ip1_layer]
-#common_layers = [fc1_layer, reshape_layer, conv1_layer, pool1_layer, ip1_layer, norm1_layer, conv2_layer, pool2_layer]
-#common_layers = [conv1_layer, pool1_layer, ip1_layer]
+common_layers = [fc1_layer,reshape_layer, conv1_layer, pool1_layer, norm1_layer, conv2_layer, pool2_layer, norm2_layer, ip1_layer]
 
 # setup dropout for the different layers
 # we use 10% dropout on the inputs and 50% dropout in the hidden layers
 # as these values were previously found to be good defaults
 drop_input  = DropoutLayer(name="drop_in", bottoms=[:data], ratio=0.1)
+drop_norm1 = DropoutLayer(name="drop_n1", bottoms=[:norm1], ratio=0.5)
+drop_norm2 = DropoutLayer(name="drop_n2", bottoms=[:norm2], ratio=0.5)
 drop_ip1 = DropoutLayer(name="drop_ip1", bottoms=[:ip1], ratio=0.5)
-
 
 if parsed_args["useCUDA"]
   backend = GPUBackend()
@@ -136,8 +124,8 @@ else
 end
 init(backend)
 
-#drop_layers = [drop_norm1, drop_norm2, drop_norm3, drop_ip1]
-drop_layers = []
+drop_layers = [drop_norm1, drop_norm2, drop_input, drop_ip1]
+
 # put training net together, note that the correct ordering will automatically be established by the constructor
 net = Net("NDSB_train", backend, [data_layer, common_layers..., drop_layers..., loss_layer])
 
