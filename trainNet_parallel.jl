@@ -87,14 +87,14 @@ fc1_layer   = InnerProductLayer(name="fc1", output_dim=prod(IR[1:2]), neuron=Neu
 #Convolution layer needs 4D tensor so we need to reshape outputs from InnerProductLayer (the fourth dimension is implicit)
 reshape_layer = ReshapeLayer(shape=IR,bottoms=[:fc1], tops=[:rs1])
 
-conv1_layer = ConvolutionLayer(name="conv1", n_filter=64, kernel=(5,5), pad=(2,2),
+conv1_layer = ConvolutionLayer(name="conv1", n_filter=100, kernel=(5,5), pad=(2,2),
     stride=(2,2), filter_init=XavierInitializer(), bottoms=[:rs1], tops=[:conv1])
 pool1_layer = PoolingLayer(name="pool1", kernel=(3,3), stride=(2,2), neuron=Neurons.ReLU(),
     bottoms=[:conv1], tops=[:pool1])
 norm1_layer = LRNLayer(name="norm1", kernel=3, scale=5e-5, power=0.75, mode=LRNMode.AcrossChannel(),
     bottoms=[:pool1], tops=[:norm1])
 
-conv2_layer = ConvolutionLayer(name="conv2", n_filter=64, kernel=(5,5), pad=(2,2),
+conv2_layer = ConvolutionLayer(name="conv2", n_filter=50, kernel=(5,5), pad=(2,2),
     stride=(2,2), filter_init=XavierInitializer(), bottoms=[:norm1], tops=[:conv2], neuron=Neurons.ReLU())
 pool2_layer = PoolingLayer(name="pool2", kernel=(3,3), stride=(2,2), pooling=Pooling.Mean(),
     bottoms=[:conv2], tops=[:pool2])
