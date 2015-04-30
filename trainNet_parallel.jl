@@ -86,6 +86,8 @@ fc1_layer   = InnerProductLayer(name="fc1", output_dim=prod(IR[1:2]), neuron=Neu
 
 #Convolution layer needs 4D tensor so we need to reshape outputs from InnerProductLayer (the fourth dimension is implicit)
 reshape_layer = ReshapeLayer(shape=IR,bottoms=[:fc1], tops=[:rs1])
+
+#Split the reshaped layer to 3 so we can feed into each of the 3 convolution layers
 split1_layer = SplitLayer(bottoms=[:rs1],tops=[:i1,:i2,:i3])
 
 conv1_layer = ConvolutionLayer(name="conv1", n_filter=32, kernel=(5,5), pad=(2,2),
@@ -103,6 +105,7 @@ conv3_layer = ConvolutionLayer(name="conv3", n_filter=64, kernel=(5,5), pad=(2,2
 pool3_layer = PoolingLayer(name="pool3", kernel=(3,3), stride=(2,2), pooling=Pooling.Mean(),
     bottoms=[:conv3], tops=[:pool3])
 
+#Concatenate the layers so they can be put back in to one
 concat1_layer = ConcatLayer(bottoms=[:pool1,:pool2,:pool3],tops=[:cat1])
 
 norm3_layer = LRNLayer(name="norm3", kernel=3, scale=5e-5, power=0.75, mode=LRNMode.AcrossChannel(),
