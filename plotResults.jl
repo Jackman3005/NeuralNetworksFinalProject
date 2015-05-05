@@ -13,12 +13,14 @@ err = []
 epochs = []
 lr = []
 mom = []
+obj = []
 
 for i in srtIter
     acc = cat(1,acc,data["statistics"]["accuracy-accuracy"][i])
     err = cat(1,err,data["statistics"]["accuracy-error"][i])
     mom = cat(1,mom,data["statistics"]["momentum"][i])
     lr = cat(1,lr,data["statistics"]["learning-rate"][i])
+    obj = cat(1,obj,data["statistics"]["obj-val"][i])
     epochs = cat(1,epochs,int(i))
 end
 
@@ -50,3 +52,8 @@ plot(epochs,lr)
 title("Learning Rate vs. Epoch")
 xlabel("Epochs")
 ylabel("Learning Rate")
+
+plot(epochs,obj)
+title("Logistic Loss vs. Epoch")
+xlabel("Epochs")
+ylabel("Logistic Loss")
